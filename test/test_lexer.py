@@ -1,16 +1,27 @@
 
 from lc3_py.type_additions import iserr
 from lc3_py.assembler.lexer import *
-def test_line():
+def test_hello_world():
 
-    tokens = lex("lea r0, label_here\n    add r0, r1, #20")
+    tokens = lex("""
+.ORIG x3000
+LEA R0, , label-here ; Comment here is #1 and x13 X13 "WOW"!!! oh yea
+                 
+      PUTS
+HALT
+label-here .STRINGZ,    "Hello, World!"
+.END
+""")
+    should_be: list[Lexeme] = [
+        Newline(1),
+        DotWord("ORIG"), 0x3000, Newline(1),
+        Word("LEA"), Word("R0"), Word("label-here"), Comment(" Comment here is #1 and x13 X13 \"WOW\"!!! oh yea"), Newline(2),
+        Word("PUTS"), Newline(1),
+        Word("HALT"), Newline(1),
+        Word("label-here"), DotWord("STRINGZ"), "Hello, World!", Newline(1),
+        DotWord("END"), Newline(1),
+    ]
     assert not iserr(tokens)
-    # assert len(tokens) == 3, tokens
-    # assert isinstance(tokens[0].lexeme, Word)
-    # assert isinstance(tokens[1].lexeme, Word)
-    # assert isinstance(tokens[2].lexeme, Word)
-    # assert tokens[0].lexeme.value == "lea"
-    # assert tokens[1].lexeme.value == "r0"
-    # assert tokens[2].lexeme.value == "label_here"
-
-    print(tokens)
+    for lexed_token, lexeme in zip(tokens, should_be):
+        assert lexed_token.lexeme == lexeme
+    assert len(tokens) == len(should_be)

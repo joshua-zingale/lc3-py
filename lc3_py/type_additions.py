@@ -10,6 +10,17 @@ def iserr(res: t.Any) -> t.TypeIs[Err]:
         return True
     return False
 
+
+@t.overload
+def has_no_err(seq: list[Result[_T, _E]] | list[_T]) -> t.TypeGuard[list[_T]]: ...
+@t.overload
+def has_no_err(seq: t.Sequence[Result[_T, _E]] | t.Sequence[_T]) -> t.TypeGuard[t.Sequence[_T]]: ...
+@t.overload
+def has_no_err(seq: t.Iterable[Result[_T, _E]] | t.Iterable[_T]) -> t.TypeGuard[t.Iterable[_T]]: ...
+def has_no_err(seq: t.Iterable[Result[_T, _E]] | t.Iterable[_T]) -> t.TypeGuard[t.Iterable[_T]]:
+    return not any(map(iserr, seq))
+
+
 def expect(res: Result[_T, _E], reason: t.Optional[str] = None) -> _T:
     """Casts a Result to the non-:class:`Err` value.
     

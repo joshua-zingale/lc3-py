@@ -2,15 +2,28 @@ from dataclasses import dataclass
 import re
 import typing as t
 
-from lc3_py.type_additions import Result, Err
+from lc3_py.type_additions import Result, Err, iserr, has_no_err
 
 @dataclass(frozen=True)
 class Token:
     line: int
     char: int
     length: int
-    lexeme: Result[Lexeme, InvalidLexeme]
+    lexeme: Lexeme
 
+@dataclass(frozen=True)
+class InvalidToken(Err):
+    line: int
+    char: int
+    length: int
+    lexeme: InvalidLexeme
+
+    def __init__(self, line: int, char: int, length: int, lexeme: InvalidLexeme):
+        super().__init__(f"'{lexeme.value}' is not a valid token")
+        object.__setattr__(self, 'line', line)
+        object.__setattr__(self, 'char', char)
+        object.__setattr__(self, 'length', length)
+        object.__setattr__(self, 'lexeme', lexeme)
 
 @dataclass(frozen=True)
 class Newline:
@@ -36,30 +49,30 @@ class Comment:
 class InvalidLexeme(Err):
     def __init__(self, string: str):
         super().__init__(f"invalid token '{string}'")
-        self._token = string
+        self._value = string
     @property
-    def token(self) -> str:
-        return self._token
+    def value(self) -> str:
+        return self._value
 
 # class Skip: ...
 class EOF: ...
 
 _lex_table_uncompiled: dict[str, t.Callable[[str], Result[Lexeme, InvalidLexeme]]]= {
-    r"[\n\r]+": lambda s: Newline(s.count("\n")),
-    r"[#x]\d+": lambda s: int(s[1:], 10 if s[0] == "#" else 16),
+    r"[\n\r][\s\n\r]*": lambda s: Newline(s.count("\n")),
+    r"[#xX]\d+": lambda s: int(s[1:], 10 if s[0] == "#" else 16),
     r"\.[^\s,]+": lambda s: DotWord(s[1:]),
-        r'".*""': lambda s: s[1:-1],
+        r'".*"': lambda s: s[1:-1],
     r"'.*'": lambda s: Char(s[1:-1]),
-    r";.*": lambda s: Comment(s[1:]),
+    r";[^\n\r]*": lambda s: Comment(s[1:]),
     r"[^\d\s,][^\s,]*": Word,
-    r".*": InvalidLexeme
+    r"\S*": InvalidLexeme
 }
 
 lex_table = {
-    re.compile(r"^[,\s]*(" + regex + r")"): constructor for regex, constructor in _lex_table_uncompiled.items()
+    re.compile(r"^[,\t ]*(" + regex + r")[,\t ]*"): constructor for regex, constructor in _lex_table_uncompiled.items()
 }
 
-Lexeme: t.TypeAlias =  Newline | Word | DotWord | int | str | Char
+Lexeme: t.TypeAlias =  Newline | Word | DotWord | int | str | Char | Comment
 
 def try_match(pattern: re.Pattern[str], string: str) -> t.Optional[re.Match[str]]:
     """Returns the next match for a patternin a string if it exists."""
@@ -86,31 +99,32 @@ def lex(source: str) -> Result[list[Token], InvalidTokenPresent]:
     pos = 0
     line_start_char = 0
     line = 1
-    tokens: list[Token] = []
-    invalid = False
+    tokens: list[Token | InvalidToken] = []
     while True:
         lexeme, start_pos, end_pos = advance(source, pos)
         if isinstance(lexeme, EOF):
             break
-        if isinstance(lexeme, InvalidLexeme):
-            invalid = True        
         
-        tokens.append(Token(line=line,char=pos - line_start_char,length=end_pos-start_pos,lexeme=lexeme))
+        if iserr(lexeme):
+            tokens.append(InvalidToken(line=line,char=pos - line_start_char,length=end_pos-start_pos,lexeme=lexeme))
+        else:
+            tokens.append(Token(line=line,char=pos - line_start_char,length=end_pos-start_pos,lexeme=lexeme))
+
         if isinstance(lexeme, Newline):
             line += lexeme.number
             line_start_char = end_pos
         pos = end_pos
         
-    if invalid:
-        return InvalidTokenPresent(tokens)
-    return tokens
+    if has_no_err(tokens):
+        return tokens
+    return InvalidTokenPresent(tokens)
     
 
 class InvalidTokenPresent(Err):
-    def __init__(self, tokens: list[Token]):
+    def __init__(self, tokens: list[Token | InvalidToken]):
         super().__init__("there was at least one invalid token")
         self._tokens = tokens
 
     @property
-    def tokens(self) -> list[Token]:
+    def tokens(self) -> list[Token | InvalidToken]:
         return self._tokens
