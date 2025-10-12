@@ -54,7 +54,6 @@ class InvalidLexeme(Err):
     def value(self) -> str:
         return self._value
 
-# class Skip: ...
 class EOF: ...
 
 _lex_table_uncompiled: dict[str, t.Callable[[str], Result[Lexeme, InvalidLexeme]]]= {
@@ -68,22 +67,22 @@ _lex_table_uncompiled: dict[str, t.Callable[[str], Result[Lexeme, InvalidLexeme]
     r"\S*": InvalidLexeme
 }
 
-lex_table = {
+_lex_table = {
     re.compile(r"^[,\t ]*(" + regex + r")[,\t ]*"): constructor for regex, constructor in _lex_table_uncompiled.items()
 }
 
 Lexeme: t.TypeAlias =  Newline | Word | DotWord | int | str | Char | Comment
 
-def try_match(pattern: re.Pattern[str], string: str) -> t.Optional[re.Match[str]]:
+def _try_match(pattern: re.Pattern[str], string: str) -> t.Optional[re.Match[str]]:
     """Returns the next match for a patternin a string if it exists."""
     return next(re.finditer(pattern, string), None)
 
-def advance(source: str, pos: int) -> tuple[Lexeme | InvalidLexeme | EOF, int, int]:
+def _advance(source: str, pos: int) -> tuple[Lexeme | InvalidLexeme | EOF, int, int]:
     """Get the next lexeme in source[pos:]"""
     if pos >= len(source):
         return EOF(), pos, pos
-    for pattern, constructor in lex_table.items():
-        match = try_match(pattern, source[pos:])
+    for pattern, constructor in _lex_table.items():
+        match = _try_match(pattern, source[pos:])
         if match is None:
             continue
 
@@ -101,7 +100,7 @@ def lex(source: str) -> Result[list[Token], InvalidTokenPresent]:
     line = 1
     tokens: list[Token | InvalidToken] = []
     while True:
-        lexeme, start_pos, end_pos = advance(source, pos)
+        lexeme, start_pos, end_pos = _advance(source, pos)
         if isinstance(lexeme, EOF):
             break
         
