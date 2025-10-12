@@ -5,6 +5,7 @@ import typing as t
 
 from lc3_py.type_additions import Result, Err, ErrList
 
+from .lexer import Token
 
 class Address:
 
@@ -95,15 +96,16 @@ class StringZ:
     address: Address
 
 Instruction: t.TypeAlias = Lea | Halt
+Data: t.TypeAlias = bytes | str | int
 Directive: t.TypeAlias = StringZ
 Statement: t.TypeAlias = Instruction | Directive
      
 
+def get_symbol_table(tokens: t.Sequence[Token]) -> Result[SymbolTable, ErrList]: ...
 
-def pre_assemble(source: str) -> Result[tuple[list[Statement], SymbolTable], ErrList]: ...
-"""Returns a list of instructions rom assembly"""
+def parse(tokens: t.Sequence[Token], symbol_table: SymbolTable) -> Result[list[Instruction | Data], ErrList]: ...
 
-def assemble(source: str) -> Result[bytes, ErrList]: ...
+def assemble(program: list[Instruction | Data]) -> Result[bytes, ErrList]: ...
 
 
 class AddressErr(Err):
