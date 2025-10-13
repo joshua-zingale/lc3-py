@@ -38,8 +38,9 @@ class ExpectationError(ValueError):
             super().__init__(f"Expectation violated: {reason}: found {type(err).__name__}: {err.error}")
 
 class Err:
+    _error: str
     def __init__(self, error: str):
-        self._error = error
+        object.__setattr__(self, "_error", error)
     @property
     def error(self) -> str:
         return self._error
@@ -52,7 +53,7 @@ class Err:
 class ErrList(list[Err], Err):
     def __init__(self, error: str):
         super().__init__()
-        self._error = error
+        object.__setattr__(self, "_error", error)
 
     @property
     def error(self) -> str:
