@@ -5,7 +5,6 @@ import typing as t
 
 from lc3_py.type_additions import Result, Err, ErrList
 
-from .lexer import Token
 
 class Address:
 

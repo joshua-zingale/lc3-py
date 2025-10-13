@@ -4,6 +4,8 @@ import typing as t
 
 from lc3_py.type_additions import Err
 
+from lc3_py.assembler.n_bit_number import FiveBitSigned, SixBitSigned, EightBitSigned, NineBitSigned, ElevenBitSigned
+
 class Register(enum.StrEnum):
     R0 = "R0"
     R1 = "R1"
@@ -14,37 +16,6 @@ class Register(enum.StrEnum):
     R6 = "R6"
     R7 = "R7"
 
-def _construct_n_bit[T](constructor: t.Callable[[int], T], value: int, bits: int) -> T | Err:
-    if value >= 2**(bits-1) or value < 2**(bits-1):
-        return Err(f"the number '{value}' (base 10) can not be fit into {bits} bits as a signed integer.")
-    return constructor(value)
-
-
-class FiveBitNumber(int):
-    @staticmethod
-    def new(value: int) -> FiveBitNumber | Err:
-        return _construct_n_bit(FiveBitNumber, value, 5)
-    
-class SixBitNumber(int):
-    @staticmethod
-    def new(value: int) -> SixBitNumber | Err:
-        return _construct_n_bit(SixBitNumber, value, 6)
-    
-class EightBitNumber(int):
-    @staticmethod
-    def new(value: int) -> EightBitNumber | Err:
-        return _construct_n_bit(EightBitNumber, value, 8)
-
-class NineBitNumber(int):
-    @staticmethod
-    def new(value: int) -> NineBitNumber | Err:
-        return _construct_n_bit(NineBitNumber, value, 9)
-    
-class ElevenBitNumber(int):
-    @staticmethod
-    def new(value: int) -> ElevenBitNumber | Err:
-        return _construct_n_bit(ElevenBitNumber, value, 11)
-    
 @dataclass(frozen=True)
 class Add:
     destination: Register
@@ -55,7 +26,7 @@ class Add:
 class AddIm:
     destination: Register
     operand_1: Register
-    operand_2: FiveBitNumber
+    operand_2: FiveBitSigned
 
 @dataclass(frozen=True)
 class And:
@@ -67,14 +38,14 @@ class And:
 class AndIm:
     destination: Register
     operand_1: Register
-    operand_2: FiveBitNumber
+    operand_2: FiveBitSigned
 
 @dataclass(frozen=True)
 class Br:
     n: bool
     z: bool
     p: bool
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 
 @dataclass(frozen=True)
@@ -83,7 +54,7 @@ class Jmp:
 
 @dataclass(frozen=True)
 class Jsr:
-    pc_offset: ElevenBitNumber
+    pc_offset: ElevenBitSigned
 
 @dataclass(frozen=True)
 class Jsrr:
@@ -92,23 +63,23 @@ class Jsrr:
 @dataclass(frozen=True)
 class Ld:
     destination: Register
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 @dataclass(frozen=True)
 class Ldi:
     destination: Register
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 @dataclass(frozen=True)
 class Ldr:
     destination: Register
     base_register: Register
-    offset: SixBitNumber
+    offset: SixBitSigned
 
 @dataclass(frozen=True)
 class Lea:
     destination: Register
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 @dataclass(frozen=True)
 class Not:
@@ -124,22 +95,22 @@ class Rti: pass
 @dataclass(frozen=True)
 class St:
     source: Register
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 @dataclass(frozen=True)
 class Sti:
     source: Register
-    pc_offset: NineBitNumber
+    pc_offset: NineBitSigned
 
 @dataclass(frozen=True)
 class Str:
     source: Register
     base_register: Register
-    offset: SixBitNumber
+    offset: SixBitSigned
 
 @dataclass(frozen=True)
 class Trap:
-    vector: EightBitNumber
+    vector: EightBitSigned
 
 
 
@@ -153,7 +124,7 @@ class LabelBr:
 
 @dataclass(frozen=True)
 class LabelJsr:
-    pc_offset: ElevenBitNumber
+    pc_offset: ElevenBitSigned
 
 @dataclass(frozen=True)
 class LabelLd:

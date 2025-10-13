@@ -99,7 +99,7 @@ def get_match_functions_from_regex(mapping: StringRegexMapping[_Lexeme]) -> t.Se
 
 
 
-def lex(
+def parse(
         input_sequence: InputSequence[_T],
         match_functions: t.Sequence[MatchFunction[_T, _Lexeme, _Span]],
         skip_function: t.Optional[SkipFunction[_T]] = None) -> t.Sequence[Match[_Lexeme, _Span]] | InvalidSequence[_Lexeme, _Span]:

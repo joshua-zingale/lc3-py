@@ -59,4 +59,4 @@ def _skip_function(input_sequence: t.Sequence[str], position: int):
 
 
 def lex_lc3(source: str) -> t.Sequence[parsing.Match[Lexeme, parsing.Span]] | parsing.InvalidSequence[Lexeme, parsing.Span]:
-    return parsing.lex(source, _match_functions, _skip_function)
+    return parsing.parse(source, _match_functions, _skip_function)
