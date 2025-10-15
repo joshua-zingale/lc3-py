@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-import re
 import typing as t
 
-from lc3_py.type_additions import Result, Err
-import lc3_py.parsing as parsing
+from lc3_py.type_additions import Err
+import lc3_py.lexing as lexing
 
 @dataclass(frozen=True)
 class Newline:
@@ -12,6 +11,11 @@ class Newline:
 @dataclass(frozen=True)
 class Word:
     value: str
+
+    def __eq__(self, other: t.Any):
+        return isinstance(other, Word) and self.value.lower() == other.value.lower()
+    def __hash__(self):
+        return hash(self.value.lower())
 
 @dataclass(frozen=True)
 class DotWord:
@@ -25,6 +29,11 @@ class Char:
 class Comment:
     value: str
 
+@dataclass(frozen=True)
+class Integer:
+    value: int
+    string: str
+
 
 class InvalidLexeme(Err):
     def __init__(self, string: str):
@@ -35,9 +44,9 @@ class InvalidLexeme(Err):
         return self._value
 
 
-_lex_table: parsing.StringRegexMapping[Lexeme] = {
+_lex_table: lexing.StringRegexMapping[Lexeme] = {
     r"[\n\r][\s\n\r]*": lambda g: Newline(g[0].count("\n")),
-    r"[#xX]\d+": lambda g: int(g[0][1:], 10 if g[0] == "#" else 16),
+    r"[#xX]\d+": lambda g: Integer(int(g[0][1:], 10 if g[0] == "#" else 16), g[0]),
     r"\.[^\s,]+": lambda g: DotWord(g[0][1:]),
     r'".*"': lambda g: g[0][1:-1],
     r"'.*'": lambda g: Char(g[0][1:-1]),
@@ -46,9 +55,9 @@ _lex_table: parsing.StringRegexMapping[Lexeme] = {
     r"\S*": lambda g: InvalidLexeme(g[0])
 }
 
-_match_functions = parsing.get_match_functions_from_regex(_lex_table)
+_match_functions = lexing.get_match_functions_from_regex(_lex_table)
 
-Lexeme: t.TypeAlias =  Newline | Word | DotWord | int | str | Char | Comment
+Lexeme: t.TypeAlias =  Newline | Word | DotWord | Integer | str | Char | Comment
 
 _skip_chars = ",\t "
 
@@ -58,5 +67,5 @@ def _skip_function(input_sequence: t.Sequence[str], position: int):
     return position
 
 
-def lex_lc3(source: str) -> t.Sequence[parsing.Match[Lexeme, parsing.Span]] | parsing.InvalidSequence[Lexeme, parsing.Span]:
-    return parsing.parse(source, _match_functions, _skip_function)
+def lex_lc3(source: str) -> t.Sequence[lexing.Match[Lexeme]] | lexing.InvalidSequence[Lexeme]:
+    return lexing.lex(source, _match_functions, _skip_function)

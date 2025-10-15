@@ -11,6 +11,13 @@ def iserr(res: t.Any) -> t.TypeIs[Err]:
     return False
 
 
+
+@t.overload
+def has_no_err(seq: tuple[Result[_T, _E]] | tuple[_T]) -> t.TypeGuard[tuple[_T]]: ...
+@t.overload
+def has_no_err(seq: tuple[Result[_T, _E], Result[_T, _E]] | tuple[_T, _T]) -> t.TypeGuard[tuple[_T, _T]]: ...
+@t.overload
+def has_no_err(seq: tuple[Result[_T, _E], Result[_T, _E], Result[_T, _E]] | tuple[_T, _T, _T]) -> t.TypeGuard[tuple[_T, _T, _T]]: ...
 @t.overload
 def has_no_err(seq: list[Result[_T, _E]] | list[_T]) -> t.TypeGuard[list[_T]]: ...
 @t.overload
