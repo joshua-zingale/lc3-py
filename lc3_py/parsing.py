@@ -79,7 +79,9 @@ class StrAdvancer(Advancer[str]):
 
 _In = t.TypeVar("_In")
 _Out = t.TypeVar("_Out")
+_Out2 = t.TypeVar("_Out2")
 _Err = t.TypeVar("_Err", bound=Err)
+_Err2 = t.TypeVar("_Err2", bound=Err)
 CombinatorResult: t.TypeAlias =  tuple[AdvancingSequence[_In], _Out] | _Err
 CombinatorFunction: t.TypeAlias = t.Callable[[AdvancingSequence[_In]], CombinatorResult[_In, _Out, _Err]]
 
@@ -189,11 +191,11 @@ class Combinator(abc.ABC, t.Generic[_In, _Out, _Err]):
             return Err("extra tokens found after parsing")
         return v[1]
 
-    def __call__(self, inp: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out]:
+    def __call__(self, inp: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out, _Err]:
         return self.function(inp)
-    def __or__(self, other: Combinator[_In, _T]):
+    def __or__(self, other: Combinator[_In, _Out2, _Err2]):
         @combinator(f"{self.name} | {other.name}")
-        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out | _T]:
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out | _Out2, _Err | _Err2]:
             res = self(seq)
             if iserr(res):
                 return other(seq)
