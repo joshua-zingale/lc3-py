@@ -58,3 +58,17 @@ def test_then():
     comb = comb + regex(r"^\d+")
     assert comb.parse("123.8") == "123.8"
     assert iserr(comb.parse("123. 8"))
+
+def test_cons():
+    comb = string("d").cons(regex(r"\d+").map(int))
+    assert comb.parse("d198") == ("d", 198)
+    assert iserr(comb.parse("dd"))
+    assert iserr(comb.parse("198"))
+
+def test_append():
+    comb = string("d").cons(regex(r"\d+").map(int)).append(string("d"))
+    assert comb.parse("d654d") == ("d", 654, "d")
+    assert iserr(comb.parse("d"))
+    assert iserr(comb.parse("198"))
+    assert iserr(comb.parse("d198"))
+    assert iserr(comb.parse("198"))

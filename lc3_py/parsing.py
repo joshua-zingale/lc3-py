@@ -165,7 +165,7 @@ class Combinator(abc.ABC, t.Generic[_In, _Out]):
             
 
     def postskip(self, skipper: Combinator[_In, t.Any]) -> Combinator[_In, _Out]:
-        @combinator(f"{self.name} >> ?({skipper.name})")
+        @combinator(f"{self.name}({skipper.name})?")
         def comb(seq: AdvancingSequence[_In]):
             res = self(seq)
             if iserr(res):
@@ -179,12 +179,26 @@ class Combinator(abc.ABC, t.Generic[_In, _Out]):
         return comb
     
     def preskip(self, skipper: Combinator[_In, t.Any]) -> Combinator[_In, _Out]:
-        @combinator(f"?({skipper.name} >> {self.name})")
+        @combinator(f"({skipper.name})?{self.name}")
         def comb(seq: AdvancingSequence[_In]):
             while not iserr(res := skipper(seq)):
                 seq = res[0]
             res = self(seq)
             return res
+        return comb
+    
+    def consume(self, consumer: Combinator[_In, t.Any]) -> Combinator[_In, _Out]:
+        @combinator(f"{self.name}(?={consumer.name})")
+        def comb(seq: AdvancingSequence[_In]):
+            res1 = self(seq)
+            if iserr(res1):
+                return res1
+            seq = res1[0]
+            if iserr(res2 := consumer(seq)):
+                return res2
+            
+            res3 = res2[0], res1[1]
+            return res3
         return comb
 
     def parse_many(self, seq: t.Sequence[_In]) -> t.Sequence[_Out] | Err:
@@ -232,6 +246,41 @@ class Combinator(abc.ABC, t.Generic[_In, _Out]):
             join_obj = res1[1] + res2[1]
             return res2[0], join_obj
         return comb
+    
+    def cons[_Out2](self, other: Combinator[_In, _Out2]) -> Combinator[_In, tuple[_Out, _Out2]]:
+        @combinator(f"({self.name} + {other.name})")
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, tuple[_Out, _Out2]]:
+            res1 = self(seq)
+            if iserr(res1):
+                return res1
+            if len(res1[0]) == 0:
+                return ErrToken("unexptected end of file", start=res1[0].pos)
+            res2 = other(res1[0])
+            if iserr(res2):
+                return res2
+            
+            return res2[0], (res1[1], res2[1])
+        return comb
+    
+    @t.overload
+    def append[_Out1, _Out11, _Out2](self: Combinator[_In, tuple[_Out1, _Out11]], other: Combinator[_In, _Out2]) -> Combinator[_In, tuple[_Out1, _Out11, _Out2]]: ...
+    @t.overload
+    def append[_Out1, _Out11, _Out12, _Out2](self: Combinator[_In, tuple[_Out1, _Out11, _Out12]], other: Combinator[_In, _Out2]) -> Combinator[_In, tuple[_Out1, _Out11, _Out12,  _Out2]]: ...
+    def append[_Out1, _Out2](self: Combinator[_In, tuple[_Out1, ...]], other: Combinator[_In, _Out2]) -> Combinator[_In, tuple[_Out1 | _Out2, ...]]:
+        @combinator(f"({self.name} + {other.name})")
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, tuple[_Out1 | _Out2, ...]]:
+            res1 = self(seq)
+            if iserr(res1):
+                return res1
+            if len(res1[0]) == 0:
+                return ErrToken("unexptected end of file", start=res1[0].pos)
+            res2 = other(res1[0])
+            if iserr(res2):
+                return res2
+            
+            return res2[0], (*res1[1], res2[1])
+        return comb
+
 
 
     def __call__(self, seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out]:
