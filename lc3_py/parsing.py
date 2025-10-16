@@ -11,7 +11,6 @@ from lc3_py.type_additions import Err, iserr
 # def parsed[_T](obj: t.Optional[_T] | Err) -> t.TypeIs[_T]:
 #     return obj is not None and not iserr(obj)
 
-
 class AdvancingSequence[T](t.Protocol):
     @property
     def pos(self) -> int:
@@ -77,33 +76,6 @@ class StrAdvancer(Advancer[str]):
             return self.advance(positions_to_advance)
 
 
-_In = t.TypeVar("_In")
-_Out = t.TypeVar("_Out")
-_Out2 = t.TypeVar("_Out2")
-_Err = t.TypeVar("_Err", bound=Err)
-_Err2 = t.TypeVar("_Err2", bound=Err)
-CombinatorResult: t.TypeAlias =  tuple[AdvancingSequence[_In], _Out] | _Err
-CombinatorFunction: t.TypeAlias = t.Callable[[AdvancingSequence[_In]], CombinatorResult[_In, _Out, _Err]]
-
-
-
-class IndexToPositionConverter:
-    def __init__(self, text: str):
-        self._line_starts = [0]
-        for i, char in enumerate(text):
-            if char == "\n":
-                self._line_starts.append(i + 1)
-            elif char == "\r" and not (i + 1 < len(text) and text[i + 1] == "\n"):
-                self._line_starts.append(i + 1)
-    def get(self, index: int) -> Position:
-        if index < 0:
-            raise ValueError("Index cannot be negative.")
-        line_index = bisect.bisect_right(self._line_starts, index) - 1
-        line_start_index = self._line_starts[line_index]
-        char_offset = index - line_start_index
-        return Position(line=line_index + 1, char=char_offset)
-
-
 @dataclass(frozen=True)
 class Position:
     line: int
@@ -130,13 +102,43 @@ class Span():
     end: int
 
 
+class Addative(t.Protocol):
+    def __add__(self, other: t.Self, /) -> t.Self: ...
+
+_In = t.TypeVar("_In")
+_Out = t.TypeVar("_Out")
+_Out2 = t.TypeVar("_Out2")
+_Addative = t.TypeVar("_Addative", bound=Addative)
+CombinatorResult: t.TypeAlias =  tuple[AdvancingSequence[_In], _Out] | ErrToken
+CombinatorFunction: t.TypeAlias = t.Callable[[AdvancingSequence[_In]], CombinatorResult[_In, _Out]]
+
+
+class IndexToPositionConverter:
+    def __init__(self, text: str):
+        self._line_starts = [0]
+        for i, char in enumerate(text):
+            if char == "\n":
+                self._line_starts.append(i + 1)
+            elif char == "\r" and not (i + 1 < len(text) and text[i + 1] == "\n"):
+                self._line_starts.append(i + 1)
+    def get(self, index: int) -> Position:
+        if index < 0:
+            raise ValueError("Index cannot be negative.")
+        line_index = bisect.bisect_right(self._line_starts, index) - 1
+        line_start_index = self._line_starts[line_index]
+        char_offset = index - line_start_index
+        return Position(line=line_index + 1, char=char_offset)
+
+
+
+
 @dataclass(frozen=True)
-class Combinator(abc.ABC, t.Generic[_In, _Out, _Err]):
-    function: CombinatorFunction[_In, _Out, _Err]
+class Combinator(abc.ABC, t.Generic[_In, _Out]):
+    function: CombinatorFunction[_In, _Out]
     name: str
     
 
-    def as_token(self) -> Combinator[_In, Token[_Out], ErrToken]:
+    def as_token(self) -> Combinator[_In, Token[_Out]]:
         @combinator(f"with_token({self.name})")
         def comb(seq: AdvancingSequence[_In]):
             start = seq.pos
@@ -145,24 +147,39 @@ class Combinator(abc.ABC, t.Generic[_In, _Out, _Err]):
                 return ErrToken(res.error, start=start)
             return res[0], Token(res[1], span=Span(start=start, end=res[0].pos))
         return comb
+    
+
+    def map[T](self, function: t.Callable[[_Out], T]) -> Combinator[_In, T]:
+        @combinator(f"mapped({self.name})")
+        def comb(seq: AdvancingSequence[_In]):
+            start = seq.pos
+            res = self(seq)
+            if iserr(res):
+                return ErrToken(res.error, start=start)
+            try:
+                obj = function(res[1])
+            except RuntimeError as e:
+                return ErrToken(str(e), res[0].pos)
+            return res[0], obj
+        return comb
             
 
-    def postskip(self, skipper: Combinator[_In, t.Any, Err]) -> Combinator[_In, _Out, _Err]:
-        @combinator(f"skipper({self.name})")
+    def postskip(self, skipper: Combinator[_In, t.Any]) -> Combinator[_In, _Out]:
+        @combinator(f"{self.name} >> ?({skipper.name})")
         def comb(seq: AdvancingSequence[_In]):
             res = self(seq)
             if iserr(res):
                 return res
             obj = res[1]
             seq = res[0]
-            while not iserr(res := skipper(seq)):
+            if not iserr(res := skipper(seq)):
                 seq = res[0]
 
             return seq, obj
         return comb
     
-    def preskip(self, skipper: Combinator[_In, t.Any, Err]) -> Combinator[_In, _Out, _Err]:
-        @combinator(f"skipper({self.name})")
+    def preskip(self, skipper: Combinator[_In, t.Any]) -> Combinator[_In, _Out]:
+        @combinator(f"?({skipper.name} >> {self.name})")
         def comb(seq: AdvancingSequence[_In]):
             while not iserr(res := skipper(seq)):
                 seq = res[0]
@@ -182,29 +199,47 @@ class Combinator(abc.ABC, t.Generic[_In, _Out, _Err]):
             return v
         return out
     
-    def parse(self, seq: t.Sequence[_In]) -> _Out | Err:
+    def parse(self, seq: t.Sequence[_In]) -> _Out  | ErrToken:
         inp_advancer = sequence_to_advancer(seq)
         if iserr(v := self(inp_advancer)):
             return v
         
         if len(v[0]) > 0:
-            return Err("extra tokens found after parsing")
+            return ErrToken("expected end of file", start=v[0].pos)
         return v[1]
+    
 
-    def __call__(self, inp: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out, _Err]:
-        return self.function(inp)
-    def __or__(self, other: Combinator[_In, _Out2, _Err2]):
+    def otherwise(self, other: Combinator[_In, _Out2]):
         @combinator(f"{self.name} | {other.name}")
-        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out | _Out2, _Err | _Err2]:
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out | _Out2 ]:
             res = self(seq)
             if iserr(res):
                 return other(seq)
             return res
         return comb
+    
+    def then(self: Combinator[_In, _Addative], other: Combinator[_In, _Addative]):
+        @combinator(f"({self.name} + {other.name})")
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Addative]:
+            res1 = self(seq)
+            if iserr(res1):
+                return res1
+            if len(res1[0]) == 0:
+                return ErrToken("unexptected end of file", start=res1[0].pos)
+            res2 = other(res1[0])
+            if iserr(res2):
+                return res2
+            join_obj = res1[1] + res2[1]
+            return res2[0], join_obj
+        return comb
 
 
-            
-
+    def __call__(self, seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out]:
+        return self.function(seq)
+    def __or__(self, other: Combinator[_In, _Out2]):
+        return self.otherwise(other)
+    def __add__(self: Combinator[_In, _Addative], other: Combinator[_In, _Addative]):
+        return self.then(other)
 
 def sequence_to_advancer[T](seq: t.Sequence[T]) -> AdvancingSequence[T]:
     if isinstance(seq, str):
@@ -223,13 +258,13 @@ def optimize_str_advancer(advancer: AdvancingSequence[str]) -> StrAdvancer:
 
 
 @t.overload
-def combinator(name: str, /) -> t.Callable[[CombinatorFunction[_In, _Out, _Err]], Combinator[_In, _Out, _Err]]: ...
+def combinator(name: str, /) -> t.Callable[[CombinatorFunction[_In, _Out]], Combinator[_In, _Out]]: ...
 @t.overload
-def combinator(function: CombinatorFunction[_In, _Out, _Err], /) -> Combinator[_In, _Out, _Err]: ...
-def combinator(name_or_function: CombinatorFunction[_In, _Out, _Err] | str, /) -> Combinator[_In, _Out, _Err] | t.Callable[[CombinatorFunction[_In, _Out, _Err]], Combinator[_In, _Out, _Err]]:
+def combinator(function: CombinatorFunction[_In, _Out], /) -> Combinator[_In, _Out]: ...
+def combinator(name_or_function: CombinatorFunction[_In, _Out] | str, /) -> Combinator[_In, _Out] | t.Callable[[CombinatorFunction[_In, _Out]], Combinator[_In, _Out]]:
     if isinstance(name_or_function, str):
-        def wrapped(function: CombinatorFunction[_In, _Out, _Err]):
-            return Combinator[_In, _Out, _Err](function=function, name=name_or_function)
+        def wrapped(function: CombinatorFunction[_In, _Out]):
+            return Combinator[_In, _Out](function=function, name=name_or_function)
         return wrapped
     return Combinator(function=name_or_function, name=name_or_function.__name__)
 
@@ -244,20 +279,23 @@ def string(string: str):
     def c(seq: AdvancingSequence[str]):
         if start_match(seq, string):
             return seq.advance(len(string)), string
-        return Err("")
+        return ErrToken(f"expected '{string}'", seq.pos)
     return c
 
 
-def regex(pattern: str):
+def regex_groups(pattern: str):
     if len(pattern) == 0:
         raise ValueError("pattern must be nonempty")
     compiled_pattern = re.compile(f"{pattern}".encode())
     @combinator(f"r'{pattern}'")
     def c(seq: AdvancingSequence[str]):
         seq = optimize_str_advancer(seq)
-        match = next(re.finditer(compiled_pattern, seq), Err(f"expected r'{pattern}'"))
+        match = next(re.finditer(compiled_pattern, seq), ErrToken(f"expected r'{pattern}'", seq.pos))
         if iserr(match):
             return match
-        return seq.byte_advance(match.end()), tuple(map(bytes.decode, match.groups())) or bytes.decode(match.group(0))
+        return seq.byte_advance(match.end()), tuple(map(bytes.decode, match.groups())) or (bytes.decode(match.group(0)),)
     return c
+
+def regex(pattern: str):
+    return regex_groups(pattern).map(lambda x: x[0])
 
