@@ -8,9 +8,6 @@ import typing as t
 from lc3_py.type_additions import Err, iserr
 
 
-# def parsed[_T](obj: t.Optional[_T] | Err) -> t.TypeIs[_T]:
-#     return obj is not None and not iserr(obj)
-
 class AdvancingSequence[T](t.Protocol):
     @property
     def pos(self) -> int:
@@ -95,6 +92,11 @@ class ErrToken(Err):
     def __init__(self, message: str, start: int):
         super().__init__(message)
         object.__setattr__(self, 'start', start)
+
+    def __str__(self):
+        return f"{self.__class__.__name__}(start={self.start}, error={self.error})"
+    def __repr__(self):
+        return str(self)
 
 @dataclass(frozen=True)
 class Span():
@@ -247,6 +249,16 @@ class Combinator(abc.ABC, t.Generic[_In, _Out]):
             return res2[0], join_obj
         return comb
     
+    def many(self) -> Combinator[_In, list[_Out]]:
+        @combinator(f"({self.name})*")
+        def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, list[_Out]]:
+            outputs: list[_Out] = []
+            while not iserr(res := self(seq)):
+                outputs.append(res[1])
+                seq = res[0]
+            return seq, outputs
+        return comb
+    
     def cons[_Out2](self, other: Combinator[_In, _Out2]) -> Combinator[_In, tuple[_Out, _Out2]]:
         @combinator(f"({self.name} + {other.name})")
         def comb(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, tuple[_Out, _Out2]]:
@@ -289,6 +301,18 @@ class Combinator(abc.ABC, t.Generic[_In, _Out]):
         return self.otherwise(other)
     def __add__(self: Combinator[_In, _Addative], other: Combinator[_In, _Addative]):
         return self.then(other)
+    
+class ForwardCombinator(Combinator[_In, _Out]):
+    def __init__(self, name: str):
+        def error(seq: AdvancingSequence[_In]) -> CombinatorResult[_In, _Out]:
+            return ErrToken("undefined forward combinator", seq.pos)
+        super().__init__(function=error, name=name)
+    def define(self, combinator: Combinator[_In, _Out]):
+        object.__setattr__(self, "function", combinator.function)
+
+def forward[In, Out](type_in: t.Type[In], type_out: t.Type[Out], name: str = "ForwardCombinator") -> ForwardCombinator[In, Out]:
+    return ForwardCombinator[In, Out](name)
+
 
 def sequence_to_advancer[T](seq: t.Sequence[T]) -> AdvancingSequence[T]:
     if isinstance(seq, str):
@@ -342,7 +366,7 @@ def regex_groups(pattern: str):
         match = next(re.finditer(compiled_pattern, seq), ErrToken(f"expected r'{pattern}'", seq.pos))
         if iserr(match):
             return match
-        return seq.byte_advance(match.end()), tuple(map(bytes.decode, match.groups())) or (bytes.decode(match.group(0)),)
+        return seq.byte_advance(match.end()), tuple(map(bytes.decode, filter(lambda x: x is not None, match.groups()))) or (bytes.decode(match.group(0)),)
     return c
 
 def regex(pattern: str):

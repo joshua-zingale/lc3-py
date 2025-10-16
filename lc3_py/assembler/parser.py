@@ -1,6 +1,7 @@
 import typing as t
 from lc3_py import parsing as p
 
+from . import n_bit_number
 from . import instructions as inst
 from . import directives
 
@@ -22,7 +23,16 @@ add = (string("add")
        .append(register)
        .consume(space)
        .append(register)
-       .map(lambda x: inst.Add(*x[1:])).as_token())
+       .map(lambda x: inst.Add(*x[1:])))
+
+add = (string("add")
+       .consume(space)
+       .cons(register)
+       .consume(space)
+       .append(register)
+       .consume(space)
+       .append(immediate.map(n_bit_number.FiveBitSigned.new))
+       .map(lambda x: inst.AddIm(*x[1:])))
 
 # and_ = string("and")
 # br = p.regex("^[bB][rR][nN]?[zZ]?[pP]?")

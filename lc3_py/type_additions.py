@@ -10,8 +10,6 @@ def iserr(res: t.Any) -> t.TypeIs[Err]:
         return True
     return False
 
-
-
 @t.overload
 def has_no_err(seq: tuple[Result[_T, _E]] | tuple[_T]) -> t.TypeGuard[tuple[_T]]: ...
 @t.overload

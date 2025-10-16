@@ -1,74 +1,115 @@
-from lc3_py.parsing import string, regex, Token, Span, combinator, AdvancingSequence
+from lc3_py import parsing as p
 from lc3_py.type_additions import iserr
-
+import operator as op
 
 def test_string():
-    assert string("bob").parse_many("bobbob") == ["bob", "bob"]
-    assert iserr(string("bob").parse_many("bob bob"))
-    assert iserr(string("bob").parse("bob bob"))
-    assert string("yghuijfs324").parse("yghuijfs324") == "yghuijfs324"
+    assert p.string("bob").parse_many("bobbob") == ["bob", "bob"]
+    assert iserr(p.string("bob").parse_many("bob bob"))
+    assert iserr(p.string("bob").parse("bob bob"))
+    assert p.string("yghuijfs324").parse("yghuijfs324") == "yghuijfs324"
 
 
 def test_regex():
-    assert regex(r"\w+ \d.\d\d").parse("abcdefg 3.14") == "abcdefg 3.14"
-    assert regex(r"\w\d").parse_many("a1b2") == ["a1", "b2"]
+    assert p.regex(r"\w+ \d.\d\d").parse("abcdefg 3.14") == "abcdefg 3.14"
+    assert p.regex(r"\w\d").parse_many("a1b2") == ["a1", "b2"]
 
 def test_otherwise():
-    assert (regex(r"\d.\d\d") | string("bob")).parse("3.14") == "3.14"
-    assert (regex(r"\d.\d\d") | string("bob")).parse("bob") == "bob"
-    assert iserr((regex(r"\d.\d\d") | string("bob")).parse("3.145"))
+    assert (p.regex(r"\d.\d\d") | p.string("bob")).parse("3.14") == "3.14"
+    assert (p.regex(r"\d.\d\d") | p.string("bob")).parse("bob") == "bob"
+    assert iserr((p.regex(r"\d.\d\d") | p.string("bob")).parse("3.145"))
 
 def test_postskip():
-    assert iserr(regex(r"d.\d\d").parse("3.14    "))
-    assert regex(r"\d.\d\d").postskip(regex(r"\s+")).parse("3.14   ") == "3.14"
-    assert regex(r"\w\d").postskip(string("\n")).parse_many("a1\nb2") == ["a1", "b2"]
+    assert iserr(p.regex(r"d.\d\d").parse("3.14    "))
+    assert p.regex(r"\d.\d\d").postskip(p.regex(r"\s+")).parse("3.14   ") == "3.14"
+    assert p.regex(r"\w\d").postskip(p.string("\n")).parse_many("a1\nb2") == ["a1", "b2"]
 def test_preskip():
-    assert iserr(regex(r"d.\d\d").parse("    3.14"))
-    assert regex(r"\d.\d\d").preskip(regex(r"\s+")).parse("     3.14") == "3.14"
+    assert iserr(p.regex(r"d.\d\d").parse("    3.14"))
+    assert p.regex(r"\d.\d\d").preskip(p.regex(r"\s+")).parse("     3.14") == "3.14"
 
 def test_as_token():
     string = "hello good\n   friend  "
-    result = regex(r"\w+").as_token().postskip(regex(r"[\s\n\r]+")).parse_many(string)
+    result = p.regex(r"\w+").as_token().postskip(p.regex(r"[\s\n\r]+")).parse_many(string)
     assert not iserr(result)
     assert result == [
-        Token("hello", Span(0,5)),
-        Token("good", Span(6,10)),
-        Token("friend", Span(string.find("friend"),string.find("friend") + len("friend")))]
+        p.Token("hello", p.Span(0,5)),
+        p.Token("good", p.Span(6,10)),
+        p.Token("friend", p.Span(string.find("friend"),string.find("friend") + len("friend")))]
 
 def test_as_token_with_postskip_first():
     string = "hello good\n   friend  "
-    result = regex(r"\w+").postskip(regex(r"[\s\n\r]+")).as_token().parse_many(string)
+    result = p.regex(r"\w+").postskip(p.regex(r"[\s\n\r]+")).as_token().parse_many(string)
     assert not iserr(result)
     assert result == [
-        Token("hello", Span(0,6)),
-        Token("good", Span(6,string.find("friend"))),
-        Token("friend", Span(string.find("friend"), len(string)))]
+        p.Token("hello", p.Span(0,6)),
+        p.Token("good", p.Span(6, string.find("friend"))),
+        p.Token("friend", p.Span(string.find("friend"), len(string)))]
 
 def test_then():
-    @combinator
-    def number(seq: AdvancingSequence[int]):
+    @p.combinator
+    def number(seq: p.AdvancingSequence[int]):
         return seq.advance(1), seq[0]
     
     assert number.parse([1]) == 1
     assert number.then(number).parse([1,2]) == 3
 
-    comb = regex(r"^\d+") + string(".")
+    comb = p.regex(r"^\d+") + p.string(".")
     assert comb.parse("123.") == "123."
     assert iserr(comb.parse("123"))
-    comb = comb + regex(r"^\d+")
+    comb = comb + p.regex(r"^\d+")
     assert comb.parse("123.8") == "123.8"
     assert iserr(comb.parse("123. 8"))
 
 def test_cons():
-    comb = string("d").cons(regex(r"\d+").map(int))
+    comb = p.string("d").cons(p.regex(r"\d+").map(int))
     assert comb.parse("d198") == ("d", 198)
     assert iserr(comb.parse("dd"))
     assert iserr(comb.parse("198"))
 
 def test_append():
-    comb = string("d").cons(regex(r"\d+").map(int)).append(string("d"))
+    comb = p.string("d").cons(p.regex(r"\d+").map(int)).append(p.string("d"))
     assert comb.parse("d654d") == ("d", 654, "d")
     assert iserr(comb.parse("d"))
     assert iserr(comb.parse("198"))
     assert iserr(comb.parse("d198"))
     assert iserr(comb.parse("198"))
+
+def test_expression():
+    space = p.regex(r"^\s*")
+    expr = p.forward(str, float, "Expression")
+    term = p.forward(str, float, "Term")
+    fac = p.forward(str, float, "Factor")
+    num = p.regex(r"^(\d*\.)?\d+").map(float)
+
+    expr.define(
+        term.postskip(space)
+        .cons(p.string("+").map(lambda x: op.add) | p.string("-").map(lambda x: op.sub))
+        .postskip(space)
+        .append(expr)
+        .map(lambda x: x[1](x[0],x[2]))
+        | term
+    )
+    term.define(
+        fac.postskip(space)
+        .cons(p.string("*").map(lambda x: op.mul) | p.string("/").map(lambda x: op.truediv))
+        .postskip(space)
+        .append(term)
+        .map(lambda x: x[1](x[0],x[2]))
+        | fac
+        )
+    fac.define(
+        p.string("(")
+        .postskip(space)
+        .cons(expr)
+        .postskip(space)
+        .consume(p.string(")"))
+        .map(lambda x: x[1])
+        | num
+    )
+    assert num.parse("12") == 12
+    assert expr.parse("12") == 12
+    assert expr.parse("12 +8/2") == 16
+
+
+
+
+    
